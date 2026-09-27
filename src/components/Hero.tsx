@@ -4,9 +4,16 @@ import { Sparkles, ShieldCheck, ArrowLeft } from 'lucide-react';
 import InteractiveStars from './InteractiveStars';
 import KidsEntryModal from './KidsEntryModal';
 import { Link } from 'react-router-dom';
+import { useChatStore } from '../store/useChatStore';
+import { useAuthStore } from '../store/useAuthStore';
+import { useThemeStore } from '../store/useThemeStore';
+import AutoLoginPrompt from './kids/AutoLoginPrompt';
 
 export default function Hero() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const { session } = useChatStore();
+  const { user } = useAuthStore();
+  const { theme } = useThemeStore();
 
   return (
     <div className="relative min-h-[calc(100vh-4rem)] flex items-center justify-center overflow-hidden">
@@ -14,9 +21,9 @@ export default function Hero() {
       <InteractiveStars />
 
       {/* Background Decor */}
-      <div className="absolute top-1/4 -right-20 w-72 h-72 bg-blue-400 rounded-full mix-blend-multiply filter blur-[100px] opacity-40 animate-blob" />
-      <div className="absolute top-1/3 -left-20 w-72 h-72 bg-purple-400 rounded-full mix-blend-multiply filter blur-[100px] opacity-40 animate-blob animation-delay-2000" />
-      <div className="absolute -bottom-8 left-1/3 w-72 h-72 bg-pink-400 rounded-full mix-blend-multiply filter blur-[100px] opacity-40 animate-blob animation-delay-4000" />
+      <div className="absolute top-1/4 -right-20 w-72 h-72 bg-blue-400 rounded-full filter blur-[100px] opacity-40 dark:opacity-20 animate-blob" />
+      <div className="absolute top-1/3 -left-20 w-72 h-72 bg-purple-400 rounded-full filter blur-[100px] opacity-40 dark:opacity-20 animate-blob animation-delay-2000" />
+      <div className="absolute -bottom-8 left-1/3 w-72 h-72 bg-pink-400 rounded-full filter blur-[100px] opacity-40 dark:opacity-20 animate-blob animation-delay-4000" />
 
       {/* Content */}
       <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
@@ -31,41 +38,70 @@ export default function Hero() {
             تواصل عائلي آمن ومحمي 100%
           </div>
 
-          <h1 className="text-5xl md:text-7xl font-black text-slate-900 tracking-tight leading-tight">
+          <h1 className={`text-5xl md:text-7xl font-black tracking-tight leading-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
             المكان الأفضل لتواصل <br className="hidden md:block" />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-purple-500 to-pink-500">
               أطفالك وعائلتك
             </span>
           </h1>
 
-          <p className="text-lg md:text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
+          <p className={`text-lg md:text-xl max-w-2xl mx-auto leading-relaxed ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>
             تطبيق مراسلة مصمم خصيصاً ليمنح الأطفال بيئة آمنة للتواصل مع أفراد العائلة بدون الحاجة لرقم هاتف أو بريد إلكتروني.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-8">
-            {/* Primary Action (Kids) */}
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="group relative inline-flex items-center justify-center gap-3 w-full sm:w-auto px-8 py-5 text-xl font-bold text-white transition-all duration-300 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-[2rem] hover:from-blue-600 hover:to-indigo-600 hover:scale-105 shadow-[0_0_40px_rgba(59,130,246,0.4)]"
-            >
-              <Sparkles className="group-hover:animate-spin" />
-              <span>أدخل رمز الغرفة</span>
-              <div className="absolute inset-0 rounded-[2rem] border-2 border-white/20" />
-            </button>
+            {session && !user ? (
+              <div className="w-full relative z-50">
+                <AutoLoginPrompt onCancel={() => {}} />
+              </div>
+            ) : (
+              <>
+                {/* Primary Action (Kids or Return to Chat) */}
+                {session && user ? (
+                  <Link
+                    to="/chat"
+                    className="group relative inline-flex items-center justify-center gap-3 w-full sm:w-auto px-8 py-5 text-xl font-bold text-white transition-all duration-300 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-[2rem] hover:from-blue-600 hover:to-indigo-600 hover:scale-105 shadow-[0_0_40px_rgba(59,130,246,0.4)]"
+                  >
+                    <Sparkles className="group-hover:animate-spin" />
+                    <span>العودة للدردشة</span>
+                    <div className="absolute inset-0 rounded-[2rem] border-2 border-white/20" />
+                  </Link>
+                ) : (
+                  <button
+                    onClick={() => setIsModalOpen(true)}
+                    className="group relative inline-flex items-center justify-center gap-3 w-full sm:w-auto px-8 py-5 text-xl font-bold text-white transition-all duration-300 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-[2rem] hover:from-blue-600 hover:to-indigo-600 hover:scale-105 shadow-[0_0_40px_rgba(59,130,246,0.4)]"
+                  >
+                    <Sparkles className="group-hover:animate-spin" />
+                    <span>أدخل رمز الغرفة</span>
+                    <div className="absolute inset-0 rounded-[2rem] border-2 border-white/20" />
+                  </button>
+                )}
 
-            {/* Secondary Action (Adults) */}
-            <Link
-              to="/auth?mode=signup"
-              className="group inline-flex items-center justify-center gap-2 w-full sm:w-auto px-8 py-5 text-lg font-bold text-gray-700 transition-all duration-300 bg-white rounded-[2rem] hover:bg-gray-50 border-2 border-gray-200 hover:border-gray-300 hover:shadow-sm"
-            >
-              <span>إنشاء غرفة جديدة</span>
-              <ArrowLeft size={20} className="text-gray-400 group-hover:-translate-x-1 transition-transform" />
-            </Link>
+                {/* Secondary Action (Adults) */}
+                {user ? (
+                  <Link
+                    to="/dashboard"
+                    className="group inline-flex items-center justify-center gap-2 w-full sm:w-auto px-8 py-5 text-lg font-bold text-gray-700 transition-all duration-300 bg-white rounded-[2rem] hover:bg-gray-50 border-2 border-gray-200 hover:border-gray-300 hover:shadow-sm"
+                  >
+                    <span>الذهاب للوحة التحكم</span>
+                    <ArrowLeft size={20} className="text-gray-400 group-hover:-translate-x-1 transition-transform" />
+                  </Link>
+                ) : (
+                  <Link
+                    to="/auth?mode=signup"
+                    className="group inline-flex items-center justify-center gap-2 w-full sm:w-auto px-8 py-5 text-lg font-bold text-gray-700 transition-all duration-300 bg-white rounded-[2rem] hover:bg-gray-50 border-2 border-gray-200 hover:border-gray-300 hover:shadow-sm"
+                  >
+                    <span>إنشاء غرفة جديدة</span>
+                    <ArrowLeft size={20} className="text-gray-400 group-hover:-translate-x-1 transition-transform" />
+                  </Link>
+                )}
+              </>
+            )}
           </div>
         </motion.div>
       </div>
 
-      <KidsEntryModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      {!session && <KidsEntryModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />}
     </div>
   );
 }

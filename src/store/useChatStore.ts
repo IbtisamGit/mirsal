@@ -1,77 +1,110 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
-import { Message, Room, Member } from '../types';
 
-interface Session {
+export interface ChildSession {
   roomId: string;
   memberId: string;
   displayName: string;
+  roomCode: string;
+  avatarUrl?: string;
 }
 
 interface ChatState {
-  session: Session | null;
-  messages: Message[];
-  status: 'idle' | 'loading' | 'success' | 'error' | 'empty';
+  session: ChildSession | null;
+  isLoading: boolean;
+  status: 'idle' | 'loading' | 'success' | 'error';
   error: string | null;
-  
-  // Actions
   hydrateSession: () => void;
+  saveSession: (session: ChildSession) => void;
+  clearSession: () => void;
+  verifyAndResumeSession: () => Promise<boolean>;
+  getRoomMembers: (roomCode: string, roomPassword?: string) => Promise<any[] | null>;
   login: (roomCode: string, memberId: string, pin: string) => Promise<boolean>;
-  getRoomMembers: (roomCode: string) => Promise<Member[] | null>;
-  logout: () => void;
-  
-  // Chat Actions
-  fetchMessages: () => Promise<void>;
-  sendMessage: (content: string) => Promise<void>;
-  subscribeToMessages: () => void;
-  unsubscribeFromMessages: () => void;
-  addMessage: (message: Message) => void;
 }
+
+const SESSION_KEY = 'mirsal_child_session';
 
 export const useChatStore = create<ChatState>((set, get) => ({
   session: null,
-  messages: [],
+  isLoading: false,
   status: 'idle',
   error: null,
 
   hydrateSession: () => {
-    const roomId = localStorage.getItem('mirsal_room_id');
-    const memberId = localStorage.getItem('mirsal_member_id');
-    const displayName = localStorage.getItem('mirsal_display_name');
-
-    if (roomId && memberId && displayName) {
-      set({ session: { roomId, memberId, displayName } });
+    try {
+      const stored = localStorage.getItem(SESSION_KEY);
+      if (stored) {
+        set({ session: JSON.parse(stored) });
+      }
+    } catch (error) {
+      console.error('Failed to parse session:', error);
+      localStorage.removeItem(SESSION_KEY);
     }
   },
 
-  getRoomMembers: async (roomCode: string) => {
-    set({ status: 'loading', error: null });
+  saveSession: (session: ChildSession) => {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    set({ session });
+  },
+
+  clearSession: () => {
+    localStorage.removeItem(SESSION_KEY);
+    set({ session: null });
+  },
+
+  verifyAndResumeSession: async () => {
+    const { session, clearSession } = get();
+    if (!session) return false;
+
+    set({ isLoading: true });
     try {
-      const { data: room, error: roomError } = await supabase
-        .from('rooms')
-        .select('id')
-        .eq('room_code', roomCode)
+      const { data, error } = await supabase
+        .from('members')
+        .select('id, room_id')
+        .eq('id', session.memberId)
         .single();
 
+      if (error || !data) throw new Error('Member not found');
+      if (data.room_id !== session.roomId) throw new Error('Room mismatch');
+
+      return true;
+    } catch (error) {
+      clearSession();
+      return false;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  getRoomMembers: async (roomCode: string, roomPassword?: string) => {
+    set({ status: 'loading', error: null });
+    try {
+      // Step 1: Verify Room Code AND Password
+      let query = supabase.from('rooms').select('id, room_password').eq('room_code', roomCode).single();
+      
+      const { data: room, error: roomError } = await query;
+
       if (roomError || !room) {
-        set({ status: 'error', error: 'رمز الغرفة غير صحيح' });
-        return null;
+        throw new Error('رمز الغرفة غير صحيح');
       }
 
+      if (room.room_password && room.room_password !== roomPassword) {
+         throw new Error('كلمة مرور الغرفة غير صحيحة');
+      }
+
+      // Step 2: Fetch Members exactly for this room
       const { data: members, error: membersError } = await supabase
         .from('members')
-        .select('*')
-        .eq('room_id', room.id);
+        .select('id, display_name, role, avatar_url')
+        .eq('room_id', room.id)
+        .order('display_name', { ascending: true });
 
-      if (membersError) {
-        set({ status: 'error', error: 'فشل في جلب الأعضاء' });
-        return null;
-      }
+      if (membersError) throw membersError;
 
-      set({ status: 'idle' });
+      set({ status: 'success' });
       return members;
-    } catch (err: any) {
-      set({ status: 'error', error: err.message });
+    } catch (error: any) {
+      set({ status: 'error', error: error.message });
       return null;
     }
   },
@@ -79,129 +112,42 @@ export const useChatStore = create<ChatState>((set, get) => ({
   login: async (roomCode: string, memberId: string, pin: string) => {
     set({ status: 'loading', error: null });
     try {
-      const { data: member, error } = await supabase
-        .from('members')
-        .select('*, rooms(room_code)')
-        .eq('id', memberId)
-        .eq('passcode', pin)
+      const { data: room } = await supabase
+        .from('rooms')
+        .select('id')
+        .eq('room_code', roomCode)
         .single();
 
-      if (error || !member) {
-        set({ status: 'error', error: 'الرمز السري غير صحيح' });
-        return false;
+      if (!room) throw new Error('رمز الغرفة غير صحيح');
+
+      const { data: member, error: memberError } = await supabase
+        .from('members')
+        .select('*')
+        .eq('id', memberId)
+        .eq('room_id', room.id)
+        .eq('pin', pin)
+        .single();
+
+      if (memberError || !member) {
+        throw new Error('الرمز السري غير صحيح');
       }
 
-      const sessionData = {
-        roomId: member.room_id,
+      // Successful login -> Save to localstorage
+      const newSession: ChildSession = {
+        roomId: room.id,
         memberId: member.id,
         displayName: member.display_name,
+        roomCode: roomCode,
+        avatarUrl: member.avatar_url
       };
-
-      localStorage.setItem('mirsal_room_id', sessionData.roomId);
-      localStorage.setItem('mirsal_member_id', sessionData.memberId);
-      localStorage.setItem('mirsal_display_name', sessionData.displayName);
-
-      set({ session: sessionData, status: 'success' });
+      
+      get().saveSession(newSession);
+      set({ status: 'success' });
       return true;
-    } catch (err: any) {
-      set({ status: 'error', error: 'حدث خطأ أثناء تسجيل الدخول' });
+
+    } catch (error: any) {
+      set({ status: 'error', error: error.message });
       return false;
     }
-  },
-
-  logout: () => {
-    localStorage.removeItem('mirsal_room_id');
-    localStorage.removeItem('mirsal_member_id');
-    localStorage.removeItem('mirsal_display_name');
-    set({ session: null, messages: [], status: 'idle' });
-    get().unsubscribeFromMessages();
-  },
-
-  fetchMessages: async () => {
-    const { session } = get();
-    if (!session) return;
-
-    set({ status: 'loading', error: null });
-    try {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*, members(display_name)')
-        .eq('room_id', session.roomId)
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-
-      set({ 
-        messages: data as Message[], 
-        status: data.length === 0 ? 'empty' : 'success' 
-      });
-    } catch (err: any) {
-      set({ status: 'error', error: 'فشل في جلب الرسائل' });
-    }
-  },
-
-  sendMessage: async (content: string) => {
-    const { session } = get();
-    if (!session || !content.trim()) return;
-
-    try {
-      const { error } = await supabase
-        .from('messages')
-        .insert({
-          room_id: session.roomId,
-          member_id: session.memberId,
-          content: content.trim()
-        });
-
-      if (error) throw error;
-    } catch (err: any) {
-      console.error('Error sending message:', err);
-    }
-  },
-
-  addMessage: async (message: Message) => {
-    // Fetch member details if not present (since realtime payload might lack joins)
-    if (!message.members) {
-       const { data: memberData } = await supabase
-         .from('members')
-         .select('display_name')
-         .eq('id', message.member_id)
-         .single();
-       
-       if (memberData) {
-         message.members = { display_name: memberData.display_name };
-       }
-    }
-
-    set((state) => ({ 
-      messages: [...state.messages, message],
-      status: 'success'
-    }));
-  },
-
-  subscribeToMessages: () => {
-    const { session, addMessage } = get();
-    if (!session) return;
-
-    supabase
-      .channel('public:messages')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `room_id=eq.${session.roomId}`,
-        },
-        (payload) => {
-          const newMessage = payload.new as Message;
-          addMessage(newMessage);
-        }
-      )
-      .subscribe();
-  },
-
-  unsubscribeFromMessages: () => {
-    supabase.removeAllChannels();
-  },
+  }
 }));

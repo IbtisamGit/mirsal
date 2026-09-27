@@ -1,19 +1,20 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { KeyRound, Users, ChevronRight, X } from 'lucide-react';
+import { KeyRound, Users, X, Lock } from 'lucide-react';
 import { useChatStore } from '../store/useChatStore';
-import { Member } from '../types';
 import { useNavigate } from 'react-router-dom';
 
 interface KidsEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialRoomCode?: string;
 }
 
-export default function KidsEntryModal({ isOpen, onClose }: KidsEntryModalProps) {
+export default function KidsEntryModal({ isOpen, onClose, initialRoomCode }: KidsEntryModalProps) {
   const [step, setStep] = useState<1 | 2>(1);
-  const [roomCode, setRoomCode] = useState('');
-  const [members, setMembers] = useState<Member[]>([]);
+  const [roomCode, setRoomCode] = useState(initialRoomCode || '');
+  const [roomPassword, setRoomPassword] = useState('');
+  const [members, setMembers] = useState<any[]>([]);
   const [selectedMember, setSelectedMember] = useState<string>('');
   const [pin, setPin] = useState('');
   
@@ -22,8 +23,8 @@ export default function KidsEntryModal({ isOpen, onClose }: KidsEntryModalProps)
 
   const handleCheckRoom = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!roomCode.trim()) return;
-    const fetchedMembers = await getRoomMembers(roomCode);
+    if (!roomCode.trim() || !roomPassword.trim()) return;
+    const fetchedMembers = await getRoomMembers(roomCode, roomPassword);
     if (fetchedMembers && fetchedMembers.length > 0) {
       setMembers(fetchedMembers);
       setStep(2);
@@ -61,16 +62,17 @@ export default function KidsEntryModal({ isOpen, onClose }: KidsEntryModalProps)
               <button
                 onClick={onClose}
                 className="absolute top-4 left-4 p-2 bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600 rounded-full transition-colors"
+                title="إغلاق"
               >
                 <X size={20} />
               </button>
 
               <div className="text-center mb-8">
                 <h2 className="text-3xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-purple-500">
-                  {step === 1 ? 'أهلاً بك!' : 'اختر شخصيتك'}
+                  {step === 1 ? 'أهلاً بك' : 'اختر شخصيتك'}
                 </h2>
                 <p className="text-gray-500 mt-2 font-medium">
-                  {step === 1 ? 'أدخل رمز الغرفة العائلية للبدء' : 'من أنت؟ أدخل الرمز السري الخاص بك'}
+                  {step === 1 ? 'أدخل الرمز وكلمة المرور للبدء' : 'من أنت؟ أدخل الرمز السري الخاص بك'}
                 </p>
               </div>
 
@@ -85,22 +87,36 @@ export default function KidsEntryModal({ isOpen, onClose }: KidsEntryModalProps)
                   <div>
                     <div className="relative group">
                       <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
-                        <KeyRound className="h-6 w-6 text-blue-400 group-focus-within:text-blue-600 transition-colors" />
+                        <KeyRound className="h-6 w-6 text-blue-400 transition-colors" />
                       </div>
                       <input
                         type="text" required dir="ltr"
-                        className="block w-full pl-4 pr-12 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-center text-2xl font-bold tracking-widest focus:bg-white focus:ring-0 focus:border-blue-500 transition-all outline-none"
-                        placeholder="XYZ-123"
+                        className="block w-full pl-4 pr-12 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-center text-xl font-bold tracking-widest focus:bg-white focus:ring-0 focus:border-blue-500 transition-all outline-none"
+                        placeholder="رمز الغرفة"
                         value={roomCode}
                         onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
                       />
                     </div>
                   </div>
+                  <div>
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                        <Lock className="h-6 w-6 text-blue-400 transition-colors" />
+                      </div>
+                      <input
+                        type="password" required dir="ltr"
+                        className="block w-full pl-4 pr-12 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-center text-xl font-bold tracking-widest focus:bg-white focus:ring-0 focus:border-blue-500 transition-all outline-none"
+                        placeholder="كلمة مرور الغرفة"
+                        value={roomPassword}
+                        onChange={(e) => setRoomPassword(e.target.value)}
+                      />
+                    </div>
+                  </div>
                   <button
-                    type="submit" disabled={status === 'loading' || !roomCode.trim()}
+                    type="submit" disabled={status === 'loading' || !roomCode.trim() || !roomPassword.trim()}
                     className="w-full flex justify-center items-center py-4 px-4 rounded-2xl shadow-lg shadow-blue-500/30 text-lg font-bold text-white bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 disabled:opacity-50 transition-all transform hover:-translate-y-0.5 active:translate-y-0"
                   >
-                    {status === 'loading' ? 'جاري التحقق...' : 'انطلق! 🚀'}
+                    {status === 'loading' ? 'جاري التحقق...' : 'انطلق'}
                   </button>
                 </form>
               ) : (
@@ -108,7 +124,7 @@ export default function KidsEntryModal({ isOpen, onClose }: KidsEntryModalProps)
                   <div>
                     <div className="relative group">
                       <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
-                        <Users className="h-6 w-6 text-purple-400 group-focus-within:text-purple-600 transition-colors" />
+                        <Users className="h-6 w-6 text-purple-400 transition-colors" />
                       </div>
                       <select
                         required
@@ -130,7 +146,7 @@ export default function KidsEntryModal({ isOpen, onClose }: KidsEntryModalProps)
                         type="password" required inputMode="numeric" dir="ltr" maxLength={4}
                         className="block w-full px-4 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-center text-3xl font-mono tracking-[0.5em] focus:bg-white focus:ring-0 focus:border-purple-500 transition-all outline-none"
                         placeholder="****"
-                        value={pin} onChange={(e) => setPin(e.target.value)}
+                        value={pin} onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, '').slice(0,4))}
                       />
                     </motion.div>
                   )}
@@ -143,10 +159,10 @@ export default function KidsEntryModal({ isOpen, onClose }: KidsEntryModalProps)
                       رجوع
                     </button>
                     <button
-                      type="submit" disabled={status === 'loading' || !selectedMember || !pin}
+                      type="submit" disabled={status === 'loading' || !selectedMember || pin.length !== 4}
                       className="flex-[2] flex justify-center items-center py-4 px-4 rounded-2xl shadow-lg shadow-purple-500/30 text-lg font-bold text-white bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 transition-all transform hover:-translate-y-0.5"
                     >
-                      {status === 'loading' ? 'لحظة...' : 'دخول الغرفة ✨'}
+                      {status === 'loading' ? 'لحظة...' : 'دخول الغرفة'}
                     </button>
                   </div>
                 </form>
